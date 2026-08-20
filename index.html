@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pixel Dragon Tracker</title>
+
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIINfQ3yn8fMqfMZg4x2xXyY1Aepm70tV5I=" crossorigin="">
+
+  <style>
+    :root {
+      --bg: #07111f;
+      --panel: rgba(11, 26, 45, .92);
+      --panel2: rgba(18, 41, 68, .82);
+      --text: #f7fbff;
+      --muted: #9db4c9;
+      --orange: #ff9b21;
+      --orange2: #ff6b00;
+      --cyan: #66e7ff;
+      --green: #55f08a;
+      --yellow: #ffd65c;
+      --danger: #ff6b6b;
+      --border: rgba(255,255,255,.11);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 15% 10%, rgba(255,155,33,.12), transparent 25%),
+        radial-gradient(circle at 85% 20%, rgba(102,231,255,.12), transparent 28%),
+        linear-gradient(180deg, #06101d, #0c1727 45%, #06101d);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .app { max-width: 1240px; margin: 0 auto; padding: 18px; }
+    .topbar {
+      display: flex; gap: 14px; align-items: center; justify-content: space-between;
+      margin-bottom: 14px; flex-wrap: wrap;
+    }
+    .brand { display: flex; gap: 12px; align-items: center; }
+    .radar {
+      width: 56px; height: 56px; border-radius: 50%;
+      border: 2px solid var(--cyan);
+      position: relative;
+      background:
+        radial-gradient(circle, rgba(102,231,255,.15) 0 3%, transparent 4% 25%, rgba(102,231,255,.08) 26% 28%, transparent 29% 48%, rgba(102,231,255,.08) 49% 51%, transparent 52%);
+      box-shadow: 0 0 22px rgba(102,231,255,.22);
+    }
+    .radar::before, .radar::after {
+      content:""; position:absolute; background:rgba(102,231,255,.48);
+      left:50%; top:5%; bottom:5%; width:1px;
+    }
+    .radar::after { top:50%; left:5%; right:5%; width:auto; height:1px; }
+    h1 { font-size: clamp(1.35rem, 4vw, 2.1rem); margin: 0; letter-spacing:.02em; }
+    .subtitle { color: var(--muted); margin-top: 3px; font-size: .92rem; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(290px, .75fr);
+      gap: 14px;
+    }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 16px 50px rgba(0,0,0,.25);
+      backdrop-filter: blur(10px);
+    }
+
+    #map { min-height: 620px; height: 72vh; }
+    @media (max-width: 900px) { #map { min-height: 480px; height: 58vh; } }
+
+    .side { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .card {
+      padding: 14px; border-radius: 16px; background: var(--panel2);
+      border: 1px solid var(--border);
+    }
+    .label { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .12em; }
+    .status {
+      font-size: 1.25rem; font-weight: 800; margin-top: 5px;
+      color: var(--yellow);
+    }
+    .eta { font-size: 1.05rem; margin-top: 5px; }
+    .small { color: var(--muted); font-size: .84rem; line-height: 1.45; }
+    .row { display:flex; gap:10px; justify-content:space-between; align-items:center; }
+
+    .pill {
+      padding: 7px 10px; border-radius: 999px; background: rgba(255,155,33,.13);
+      border: 1px solid rgba(255,155,33,.3); color: #ffd29d; font-size: .8rem;
+    }
+    button {
+      appearance: none; border: 0; border-radius: 12px; padding: 10px 12px;
+      background: linear-gradient(180deg, var(--orange), var(--orange2));
+      color: #1a0f00; font-weight: 800; cursor: pointer;
+    }
+    button:disabled { opacity:.6; cursor:wait; }
+
+    .progress {
+      height: 12px; border-radius: 999px; background: rgba(255,255,255,.08);
+      overflow:hidden; border:1px solid var(--border); margin-top:8px;
+    }
+    .progress > div {
+      height:100%; width:0; border-radius:999px;
+      background: linear-gradient(90deg, var(--orange2), var(--yellow));
+      transition: width .5s ease;
+    }
+
+    .timeline { display:flex; flex-direction:column; gap:10px; max-height: 310px; overflow:auto; padding-right:4px; }
+    .event { display:grid; grid-template-columns: 18px 1fr; gap:9px; }
+    .dot { width:10px; height:10px; border-radius:50%; margin-top:5px; background:var(--orange); box-shadow:0 0 10px rgba(255,155,33,.45); }
+    .event-title { font-size:.9rem; font-weight:700; }
+    .event-meta { font-size:.78rem; color:var(--muted); margin-top:2px; }
+
+    .dragon-ball {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: radial-gradient(circle at 33% 28%, #ffd486 0 12%, var(--orange) 35%, var(--orange2) 72%);
+      border: 2px solid rgba(255,255,255,.7);
+      display:flex; align-items:center; justify-content:center;
+      box-shadow:0 3px 10px rgba(0,0,0,.4);
+      color:#b51f17; font-size:13px; font-weight:900;
+    }
+    .destination-ball {
+      width: 38px; height: 38px; border-radius:50%;
+      background: radial-gradient(circle at 33% 28%, #fff2a6 0 10%, #ffb222 38%, #ff6b00 72%);
+      border:2px solid #fff;
+      box-shadow:0 0 20px rgba(255,155,33,.75);
+      display:flex; align-items:center; justify-content:center;
+      color:#b51f17; font-weight:900; font-size:15px;
+    }
+
+    .leaflet-container { background:#08111e; }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+      background:#0f2138; color:#fff; border:1px solid rgba(255,255,255,.12);
+    }
+
+    .footer-note {
+      margin-top: 12px; color: var(--muted); font-size: .76rem; text-align:center;
+    }
+    code { color:#ffd19a; }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="topbar">
+      <div class="brand">
+        <div class="radar" aria-hidden="true"></div>
+        <div>
+          <h1>Pixel Dragon Tracker</h1>
+          <div class="subtitle">Misión: llevar el Pixel hasta Avallon 🐉📦</div>
+        </div>
+      </div>
+      <div class="pill">Actualización automática: cada 10 min</div>
+    </div>
+
+    <section class="grid">
+      <div class="panel">
+        <div id="map" aria-label="Mapa del recorrido del pedido"></div>
+      </div>
+
+      <aside class="panel side">
+        <div class="card">
+          <div class="label">Estado del envío</div>
+          <div class="status" id="statusText">Cargando tracking…</div>
+          <div class="small" id="statusDetail">Consultando DHL.</div>
+        </div>
+
+        <div class="card">
+          <div class="row">
+            <div>
+              <div class="label">Destino</div>
+              <div class="eta">Avallon 🇫🇷</div>
+            </div>
+            <div class="destination-ball" aria-label="Destino">★</div>
+          </div>
+          <div class="progress"><div id="progressBar"></div></div>
+          <div class="small" id="progressLabel" style="margin-top:7px">Calculando progreso…</div>
+        </div>
+
+        <div class="card">
+          <div class="label">Entrega prevista</div>
+          <div class="eta" id="etaText">—</div>
+          <div class="small" id="lastUpdate">Última actualización: —</div>
+        </div>
+
+        <div class="card">
+          <div class="row">
+            <div>
+              <div class="label">Radar DHL</div>
+              <div class="small">Consulta manual sin esperar al próximo ciclo.</div>
+            </div>
+            <button id="refreshBtn" type="button">Actualizar</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="label" style="margin-bottom:9px">Últimos movimientos</div>
+          <div class="timeline" id="timeline"></div>
+        </div>
+      </aside>
+    </section>
+
+    <div class="footer-note">
+      Seguimiento personal. “Delivered by Deutsche Post DHL Group”. Mapa © OpenStreetMap contributors.
+    </div>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    const TRACKING_NUMBER = "JJD0000995743779301790274";
+    const REFRESH_MS = 10 * 60 * 1000;
+
+    const knownRoute = [
+      { name: "Eindhoven",      lat: 51.44083, lon: 5.47778, kind: "origin" },
+      { name: "Bruselas",       lat: 50.85045, lon: 4.34878, kind: "checkpoint" },
+      { name: "París",          lat: 48.85661, lon: 2.35222, kind: "checkpoint" },
+      { name: "Sainte-Savine",  lat: 48.29315, lon: 4.05654, kind: "checkpoint" },
+      { name: "Avallon",        lat: 47.49002, lon: 3.90832, kind: "destination" }
+    ];
+
+    const fallbackEvents = [
+      { timestamp: "2026-08-20T09:28:16+02:00", status: "Arrived at DHL Delivery Facility STE SAVINE-FRA", location: "Sainte-Savine, France" },
+      { timestamp: "2026-08-20T06:55:43+02:00", status: "Shipment has departed from a DHL facility PARIS-FRA", location: "Paris, France" },
+      { timestamp: "2026-08-20T06:39:55+02:00", status: "Processed at PARIS-FRA", location: "Paris, France" },
+      { timestamp: "2026-08-20T03:33:40+02:00", status: "Arrived at DHL Sort Facility PARIS-FRA", location: "Paris, France" },
+      { timestamp: "2026-08-19T23:07:05+02:00", status: "Shipment has departed from a DHL facility BRUSSELS-BEL", location: "Brussels, Belgium" },
+      { timestamp: "2026-08-19T17:35:22+02:00", status: "Processed at BRUSSELS-BEL", location: "Brussels, Belgium" }
+    ];
+
+    const map = L.map("map", { zoomControl: true });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+
+    const bounds = L.latLngBounds(knownRoute.map(p => [p.lat, p.lon]));
+    map.fitBounds(bounds.pad(0.14));
+
+    const routeLine = L.polyline(
+      knownRoute.map(p => [p.lat, p.lon]),
+      { color: "#ff9b21", weight: 5, opacity: .78, dashArray: "9 8" }
+    ).addTo(map);
+
+    function markerIcon(destination=false, label="★") {
+      return L.divIcon({
+        className: "",
+        html: destination
+          ? `<div class="destination-ball">${label}</div>`
+          : `<div class="dragon-ball">${label}</div>`,
+        iconSize: destination ? [38,38] : [30,30],
+        iconAnchor: destination ? [19,19] : [15,15],
+        popupAnchor: [0,-18]
+      });
+    }
+
+    knownRoute.forEach((p, i) => {
+      const dest = p.kind === "destination";
+      L.marker([p.lat, p.lon], { icon: markerIcon(dest, dest ? "★" : String(Math.min(i+1,7))) })
+        .addTo(map)
+        .bindPopup(`<strong>${p.name}</strong>${dest ? "<br>Destino final" : ""}`);
+    });
+
+    function normalizeLocation(text="") {
+      const s = text.toLowerCase();
+      if (s.includes("savine")) return "Sainte-Savine";
+      if (s.includes("paris")) return "París";
+      if (s.includes("bruss")) return "Bruselas";
+      if (s.includes("eindhoven")) return "Eindhoven";
+      if (s.includes("avallon")) return "Avallon";
+      return null;
+    }
+
+    function computeProgress(events) {
+      const seen = new Set();
+      events.forEach(e => {
+        const n = normalizeLocation(`${e.location||""} ${e.status||""}`);
+        if (n) seen.add(n);
+      });
+
+      if (events.some(e => /delivered|livré|entregado/i.test(e.status || ""))) return 100;
+      if (events.some(e => /out for delivery|with delivery courier|courier/i.test(e.status || ""))) return 94;
+      if (seen.has("Sainte-Savine")) return 82;
+      if (seen.has("París")) return 64;
+      if (seen.has("Bruselas")) return 42;
+      if (seen.has("Eindhoven")) return 18;
+      return 8;
+    }
+
+    function missionText(status="") {
+      const s = status.toLowerCase();
+      if (/delivered|livré|entregado/.test(s)) return ["MISIÓN COMPLETADA ✨", "¡El Pixel ha llegado a Avallon!"];
+      if (/out for delivery|with delivery courier|courier/.test(s)) return ["🔥 FASE FINAL", "El paquete ya va con el repartidor."];
+      if (/delivery facility|savine/.test(s)) return ["ÚLTIMA BASE DETECTADA", "Ya está en la delegación de reparto."];
+      if (/departed|in transit|transit/.test(s)) return ["EN TRÁNSITO ⚡", "El Pixel continúa su viaje."];
+      return ["RADAR ACTIVO", "Esperando el siguiente movimiento."];
+    }
+
+    function formatDate(value) {
+      if (!value) return "—";
+      try {
+        return new Intl.DateTimeFormat("es-ES", {
+          dateStyle: "medium", timeStyle: "short"
+        }).format(new Date(value));
+      } catch { return value; }
+    }
+
+    function render(data) {
+      const shipment = data.shipment || {};
+      const events = (shipment.events && shipment.events.length ? shipment.events : fallbackEvents)
+        .slice()
+        .sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      const latest = events[0] || {};
+      const [title, detail] = missionText(`${shipment.status || ""} ${latest.status || ""}`);
+      document.getElementById("statusText").textContent = title;
+      document.getElementById("statusDetail").textContent = latest.status || detail;
+
+      const progress = computeProgress(events);
+      document.getElementById("progressBar").style.width = progress + "%";
+      document.getElementById("progressLabel").textContent =
+        progress >= 100 ? "100% · paquete entregado" :
+        `${progress}% aproximado del recorrido logístico conocido`;
+
+      document.getElementById("etaText").textContent =
+        shipment.estimatedDelivery ? formatDate(shipment.estimatedDelivery) : "Hoy, según el último tracking";
+      document.getElementById("lastUpdate").textContent =
+        `Última actualización: ${formatDate(data.fetchedAt || latest.timestamp)}`;
+
+      const timeline = document.getElementById("timeline");
+      timeline.innerHTML = "";
+      events.slice(0, 8).forEach(e => {
+        const row = document.createElement("div");
+        row.className = "event";
+        row.innerHTML = `
+          <div class="dot"></div>
+          <div>
+            <div class="event-title">${escapeHtml(e.status || "Movimiento DHL")}</div>
+            <div class="event-meta">${escapeHtml(e.location || "")}${e.location ? " · " : ""}${formatDate(e.timestamp)}</div>
+          </div>`;
+        timeline.appendChild(row);
+      });
+    }
+
+    function escapeHtml(value="") {
+      return String(value).replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+      }[c]));
+    }
+
+    async function refresh() {
+      const btn = document.getElementById("refreshBtn");
+      btn.disabled = true;
+      btn.textContent = "Buscando…";
+      try {
+        const res = await fetch(`/api/tracking?trackingNumber=${encodeURIComponent(TRACKING_NUMBER)}`, {
+          headers: { "Accept": "application/json" },
+          cache: "no-store"
+        });
+        if (!res.ok) throw new Error("Tracking API no disponible");
+        const data = await res.json();
+        render(data);
+      } catch (err) {
+        render({
+          fetchedAt: new Date().toISOString(),
+          shipment: {
+            status: "in_transit",
+            estimatedDelivery: "2026-08-20T23:59:00+02:00",
+            events: fallbackEvents
+          }
+        });
+        document.getElementById("statusDetail").textContent += " · mostrando el último estado guardado";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Actualizar";
+      }
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", refresh);
+    refresh();
+    setInterval(refresh, REFRESH_MS);
+  </script>
+</body>
+</html>
